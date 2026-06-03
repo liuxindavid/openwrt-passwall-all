@@ -1,0 +1,118 @@
+name: Sync OpenWrt PassWall All
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '30 05 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout current repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sync PassWall repositories
+        run: |
+          set -eux
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          WORKDIR="$GITHUB_WORKSPACE"
+          TMPDIR="/tmp/passwall-all-sync"
+
+          rm -rf "$TMPDIR"
+          mkdir -p "$TMPDIR"
+
+          # 清理旧内容，但保留当前仓库的 .git 和 .github
+          find "$WORKDIR" -mindepth 1 -maxdepth 1 \
+            ! -name ".git" \
+            ! -name ".github" \
+            -exec rm -rf {} +
+
+          # 1. openwrt-passwall
+          git clone --depth=1 \
+            https://github.com/Openwrt-Passwall/openwrt-passwall.git \
+            "$TMPDIR/openwrt-passwall"
+
+          rm -rf "$TMPDIR/openwrt-passwall/.git" "$TMPDIR/openwrt-passwall/.github"
+          cp -a "$TMPDIR/openwrt-passwall" "$WORKDIR/openwrt-passwall"
+
+          # 2. openwrt-passwall-packages
+          git clone --depth=1 \
+            https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git \
+            "$TMPDIR/openwrt-passwall-packages"
+
+          rm -rf "$TMPDIR/openwrt-passwall-packages/.git" "$TMPDIR/openwrt-passwall-packages/.github"
+          cp -a "$TMPDIR/openwrt-passwall-packages" "$WORKDIR/openwrt-passwall-packages"
+
+          # 3. openwrt-passwall2
+          git clone --depth=1 \
+            https://github.com/Openwrt-Passwall/openwrt-passwall2.git \
+            "$TMPDIR/openwrt-passwall2"
+
+          rm -rf "$TMPDIR/openwrt-passwall2/.git" "$TMPDIR/openwrt-passwall2/.github"
+          cp -a "$TMPDIR/openwrt-passwall2" "$WORKDIR/openwrt-passwall2"
+
+          cd "$WORKDIR"
+
+          # 生成 README
+          printf '%s\n' \
+            '# OpenWrt PassWall All Mirror' \
+            '' \
+            'This repository automatically syncs the following upstream repositories:' \
+            '' \
+            '- Openwrt-Passwall/openwrt-passwall' \
+            '- Openwrt-Passwall/openwrt-passwall-packages' \
+            '- Openwrt-Passwall/openwrt-passwall2' \
+            '' \
+            '## Directory structure' \
+            '' \
+            '```text' \
+            'openwrt-passwall-all' \
+            '├── openwrt-passwall' \
+            '├── openwrt-passwall-packages' \
+            '└── openwrt-passwall2' \
+            '```' \
+            '' \
+            '## Usage in OpenWrt buildroot' \
+            '' \
+            'Add the following line to feeds.conf.default:' \
+            '' \
+            '```bash' \
+            'src-git passwall_all https://github.com/liuxindavid/openwrt-passwall-all.git;main' \
+            '```' \
+            '' \
+            'Then run:' \
+            '' \
+            '```bash' \
+            './scripts/feeds update passwall_all' \
+            './scripts/feeds install -a -p passwall_all' \
+            '```' \
+            '' \
+            '## Notes' \
+            '' \
+            'The upstream .github directories are removed to avoid GitHub workflow permission issues.' \
+            'Tags are not synchronized. Only the latest main branch contents are mirrored.' \
+            > README.md
+
+          echo "===== Synced directory list ====="
+          ls -la
+
+          git status
+          git add -A
+          git status
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Sync PassWall all repositories"
+            git push origin HEAD:main
+          fi
